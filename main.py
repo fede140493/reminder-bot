@@ -12,7 +12,7 @@ from telegram.ext import (
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import logging
-logging.basicConfig(level=logging.INFO) 
+logging.basicConfig(level=logging.INFO)
 
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
@@ -22,8 +22,8 @@ scheduler = AsyncIOScheduler()
 scheduler.configure(timezone=pytz.timezone("Europe/Rome"))
 scheduler.start()
 
-user_data = {}   # {user_id: {"name": "Federico", "reminders": [...]}}
-user_state = {}  # {user_id: {"step": "nome|giorni|ora|messaggio|foto", "temp": {...}}}
+user_data = {}   # {user_id: {"name": "...", "reminders": [...]}}
+user_state = {}  # {user_id: {"step": "...", "temp": {...}}}
 
 async def manda_messaggio(chat_id: int, testo: str):
     await app.bot.send_message(chat_id=chat_id, text=testo)
@@ -31,43 +31,35 @@ async def manda_messaggio(chat_id: int, testo: str):
 async def manda_foto(chat_id: int, photo_id: str, caption: str):
     await app.bot.send_photo(chat_id=chat_id, photo=photo_id, caption=caption)
 
-# PRIMO AVVIO: CHIEDE NOME 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id in user_data and user_data[user_id].get("name"):
         await mostra_menu(update, context)
         return
-
     await update.message.reply_text("Ciao! Come vuoi che ti chiami?\nScrivi il tuo nome (es. Federico)")
     user_state[user_id] = {"step": "nome"}
 
-# NOME 
 async def salva_nome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_state.get(user_id, {}).get("step") != "nome":
         return
-
     nome = update.message.text.strip().split()[0].capitalize()
     user_data[user_id] = {"name": nome, "reminders": []}
     del user_state[user_id]
-
     await update.message.reply_text(
         f"Perfetto {nome}! Nome salvato 💾\nOra puoi usare il bot!",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Apri menu", callback_data="menu")]])
     )
 
-# MENU PRINCIPALE
 async def mostra_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     nome = user_data.get(user_id, {}).get("name", "amico")
-
     keyboard = [
         [InlineKeyboardButton("Aggiungi reminder (testo)", callback_data="add_text")],
         [InlineKeyboardButton("Aggiungi reminder (con foto)", callback_data="add_photo")],
         [InlineKeyboardButton("Cancella reminder", callback_data="cancella")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     testo = f"Ciao {nome}! Cosa vuoi fare?"
     if update.message:
         await update.message.reply_text(testo, reply_markup=reply_markup)
@@ -78,7 +70,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-
     data = query.data
 
     if data == "menu":
@@ -89,15 +80,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tipo = "text" if data == "add_text" else "photo"
         user_state[user_id] = {"step": "giorni", "tipo": tipo, "temp": {"giorni": []}}
 
-        # Pulsanti con spunta
         giorni = [
             ("Lunedì", "mon"), ("Martedì", "tue"), ("Mercoledì", "wed"),
             ("Giovedì", "thu"), ("Venerdì", "fri"), ("Sabato", "sat"), ("Domenica", "sun")
         ]
         keyboard = []
         for nome, cod in giorni:
-            keyboard.append([InlineKeyboardButton(f"{'✅' if cod in [] else '⬜'} {nome}", callback_data=f"giorno_{cod}")])
-        keyboard.append([InlineKeyboardButton("Ogni giorno", callback_data="giorno_*")])
+            keyboard.append([InlineKeyboardButton(f"⬜ {nome}", callback_data=f"giorno_{cod}")])
+        keyboard.append([InlineKeyboardButton("⬜ Ogni giorno", callback_data="giorno_*")])
         keyboard.append([InlineKeyboardButton("Invia", callback_data="giorni_ok")])
 
         await query.edit_message_text("Scegli i giorni (puoi selezionarne più di uno):", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -108,7 +98,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         giorni_selezionati = stato["temp"]["giorni"]
 
         if cod == "*":
-            giorni_selezionati = ["*"]
+            giorni_selezionati = ["*"] if "*" not in giorni_selezionati else []
         elif cod in giorni_selezionati:
             giorni_selezionati.remove(cod)
         else:
@@ -135,7 +125,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not giorni:
             await query.edit_message_text("Devi selezionare almeno un giorno!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Riprova", callback_data="add_" + user_state[user_id]["tipo"])]]))
             return
-
         user_state[user_id]["temp"]["giorni_cron"] = giorni
         user_state[user_id]["step"] = "ora"
         await query.edit_message_text("Scrivi l'orario (es. 22:30, 22.30, 7.5, 9)")
@@ -152,7 +141,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("del_"):
         idx = int(data.split("_")[1])
         job_id = user_data[user_id]["reminders"][idx]["id"]
-        scheduler.remove_job(job_id)
+        try:
+            scheduler.remove_job(job_id)
+        except:
+            pass
         del user_data[user_id]["reminders"][idx]
         await query.edit_message_text("Cancellato!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Menu", callback_data="menu")]]))
 
@@ -172,26 +164,27 @@ async def gestisci_testo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if stato["step"] == "ora":
         match = re.search(r"(\d{1,2})[:\.]?(\d{0,2})", testo.lower())
         if not match:
-            await update.message.reply_text("Orario non valido 😅\nEsempi: 22:30, 22.30, 7.5, 9")
+            await update.message.reply_text("⚠️ Orario non valido!\nEsempi: 22:30, 22.30, 7.5, 9")
             return
-
         ore = int(match.group(1))
         minuti = int(match.group(2)) if match.group(2) else 0
         if ore > 23 or minuti > 59:
-            await update.message.reply_text("Orario non valido (max 23:59)")
+            await update.message.reply_text("⚠️ Orario non valido (max 23:59)")
             return
 
         stato["temp"]["ora"] = ore
         stato["temp"]["minuti"] = minuti
         stato["step"] = "messaggio"
-        await update.message.reply_text("Cosa vuoi che ti ricordi?")
+        await update.message.reply_text("✏️ Cosa vuoi che ti ricordi?")
 
     elif stato["step"] == "messaggio":
-        messaggio = testo or "Promemoria"
+        messaggio = testo.strip() or "Promemoria"
         giorni = stato["temp"]["giorni_cron"]
         ore = stato["temp"]["ora"]
         minuti = stato["temp"]["minuti"]
         tipo = stato["tipo"]
+
+        chat_id = update.effective_chat.id
 
         for giorno in giorni:
             job_id = f"{user_id}_{giorno}_{ore}_{minuti}_{tipo}"
@@ -199,28 +192,32 @@ async def gestisci_testo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 scheduler.add_job(
                     manda_messaggio,
                     CronTrigger(day_of_week=giorno, hour=ore, minute=minuti),
-                    args=[update.effective_chat.id, f"{messaggio}"],
-                    id=job_id, replace_existing=True
+                    args=[chat_id, f"⏰ {messaggio}"],
+                    id=job_id,
+                    replace_existing=True
                 )
-            else:  
+            else:
                 context.user_data[user_id] = {
-                    "chat_id": update.effective_chat.id,
+                    "chat_id": chat_id,
                     "caption": messaggio,
                     "giorni": giorni,
                     "ore": ore,
                     "minuti": minuti
                 }
-                await update.message.reply_text("Mandami la foto per questo reminder")
+                await update.message.reply_text("📸 Mandami la foto per questo reminder")
                 del user_state[user_id]
                 return
 
         user_data.setdefault(user_id, {"reminders": []})["reminders"].append({
-            "id": job_id, "text": messaggio, "time": f"{ore:02d}:{minuti:02d}", "type": tipo
+            "id": job_id,
+            "text": messaggio,
+            "time": f"{ore:02d}:{minuti:02d}",
+            "type": tipo
         })
 
         await update.message.reply_text(
-            f"Reminder salvato!\n\"{messaggio}\"\nAlle {ore:02d}:{minuti:02d}",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Menu", callback_data="menu")]])
+            f"✅ Reminder salvato!\n\"{messaggio}\"\nAlle {ore:02d}:{minuti:02d}",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu", callback_data="menu")]])
         )
         del user_state[user_id]
 
@@ -251,24 +248,20 @@ async def gestisci_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     })
 
     await update.message.reply_text(
-        f"✅ Reminder con foto salvato!\n"
-        f"\"{caption or 'Foto'}\"\n"
-        f"Alle {dati['ore']:02d}:{dati['minuti']:02d} 📸",
+        f"✅ Reminder con foto salvato!\n\"{caption or 'Foto'}\"\nAlle {dati['ore']:02d}:{dati['minuti']:02d} 📸",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu", callback_data="menu")]])
     )
     del context.user_data[user_id]
 
 flask_app = Flask(__name__)
-
 @flask_app.route("/")
 def home():
-    return "Bot Telegram attivo e in ascolto! (Port: {})".format(os.environ.get('PORT', 10000))
+    return "Bot Telegram attivo! (Port: {})".format(os.environ.get('PORT', 10000))
 
 def run_flask():
     port = int(os.environ.get('PORT', 10000))
-    flask_app.run(host='0.0.0.0', port=port, debug=False)
+    flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
-# AVVIO BOT + FLASK 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.Regex(r"(?i)^(ciao|menu|hey|avvia)"), mostra_menu))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, gestisci_testo))
@@ -276,11 +269,7 @@ app.add_handler(MessageHandler(filters.PHOTO, gestisci_foto))
 app.add_handler(CallbackQueryHandler(button_handler))
 
 if __name__ == "__main__":
-    #thread separato  per flask
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    
-    print("Bot Telegram + server Flask avviati! In ascolto...")
+    threading.Thread(target=run_flask, daemon=True).start()
+    print("Bot Telegram + Flask avviati! In ascolto...")
     app.run_polling()
-
 
