@@ -235,18 +235,24 @@ async def gestisci_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         job_id = f"{user_id}_{giorno}_{dati['ore']}_{dati['minuti']}_photo"
         scheduler.add_job(
             manda_foto,
-            CronTrigger(day_of_week=giorno, hour=dati["ore"], minute=dati["minuti"]),
-            args=[dati["chat_id"], photo_id, f"{caption}"],
-            id=job_id, replace_existing=True
+            CronTrigger(day_of_week=giorno, hour=dati['ore'], minute=dati['minuti']),
+            args=[dati["chat_id"], photo_id, f"⏰ {caption}"],
+            id=job_id,
+            replace_existing=True
         )
 
     user_data.setdefault(user_id, {"reminders": []})["reminders"].append({
-        "id": job_id, "text": caption, "time": f"{dati['ore']:02d}:{dati['minuti']:02d}", "type": "photo"
+        "id": job_id,
+        "text": caption or "Foto",
+        "time": f"{dati['ore']:02d}:{dati['minuti']:02d}",
+        "type": "photo"
     })
 
     await update.message.reply_text(
-        f"Reminder con foto salvato!\n\"{caption}\"\nAlle {dati['ore']:02d}:{dati['minuti']:02d} 📸",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Menu", callback_data="menu")]])
+        f"✅ Reminder con foto salvato!\n"
+        f"\"{caption or 'Foto'}\"\n"
+        f"Alle {dati['ore']:02d}:{dati['minuti']:02d} 📸",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu", callback_data="menu")]])
     )
     del context.user_data[user_id]
 
@@ -274,3 +280,4 @@ if __name__ == "__main__":
     
     print("Bot Telegram + server Flask avviati! In ascolto...")
     app.run_polling()
+
