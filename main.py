@@ -36,7 +36,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id in user_data and user_data[user_id].get("name"):
         await mostra_menu(update, context)
         return
-    await update.message.reply_text("Ciao! Come vuoi che ti chiami?\nScrivi il tuo nome (es. Federico)")
+    await update.message.reply_text("Ciao! Come vuoi che ti chiami?\nScrivi il tuo nome (es. Rico Plus)")
     user_state[user_id] = {"step": "nome"}
 
 async def salva_nome(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -272,4 +272,5 @@ if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     print("Bot Telegram + Flask avviati! In ascolto...")
     app.run_polling()
+
 
