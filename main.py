@@ -11,6 +11,8 @@ from telegram.ext import (
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+import logging
+logging.basicConfig(level=logging.INFO) 
 
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
@@ -280,4 +282,5 @@ if __name__ == "__main__":
     
     print("Bot Telegram + server Flask avviati! In ascolto...")
     app.run_polling()
+
 
