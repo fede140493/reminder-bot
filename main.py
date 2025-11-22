@@ -2,6 +2,8 @@ from dotenv import load_dotenv
 import os
 import pytz
 import re
+import threading
+from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -248,11 +250,27 @@ async def gestisci_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     del context.user_data[user_id]
 
+flask_app = Flask(__name__)
+
+@flask_app.route("/")
+def home():
+    return "Bot Telegram attivo e in ascolto! (Port: {})".format(os.environ.get('PORT', 10000))
+
+def run_flask():
+    port = int(os.environ.get('PORT', 10000))
+    flask_app.run(host='0.0.0.0', port=port, debug=False)
+
+# AVVIO BOT + FLASK 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.Regex(r"(?i)^(ciao|menu|hey|avvia)"), mostra_menu))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, gestisci_testo))
 app.add_handler(MessageHandler(filters.PHOTO, gestisci_foto))
 app.add_handler(CallbackQueryHandler(button_handler))
 
-print("Bot avviato e in ascolto... Scrivi /start per iniziare")
-app.run_polling()
+if __name__ == "__main__":
+    #thread separato  per flask
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    print("Bot Telegram + server Flask avviati! In ascolto...")
+    app.run_polling()
