@@ -2,8 +2,8 @@ from dotenv import load_dotenv
 import os
 import pytz
 import re
-import threading
-from flask import Flask
+import logging
+from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -11,25 +11,28 @@ from telegram.ext import (
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-import logging
+
 logging.basicConfig(level=logging.INFO)
 
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
-app = Application.builder().token(TOKEN).build()
+
+flask_app = Flask(__name__)
+
+application = Application.builder().token(TOKEN).build()
 
 scheduler = AsyncIOScheduler()
 scheduler.configure(timezone=pytz.timezone("Europe/Rome"))
 scheduler.start()
 
-user_data = {}   # {user_id: {"name": "...", "reminders": [...]}}
-user_state = {}  # {user_id: {"step": "...", "temp": {...}}}
+user_data = {}
+user_state = {}
 
 async def manda_messaggio(chat_id: int, testo: str):
-    await app.bot.send_message(chat_id=chat_id, text=testo)
+    await application.bot.send_message(chat_id=chat_id, text=testo)
 
 async def manda_foto(chat_id: int, photo_id: str, caption: str):
-    await app.bot.send_photo(chat_id=chat_id, photo=photo_id, caption=caption)
+    await application.bot.send_photo(chat_id=chat_id, photo=photo_id, caption=caption)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -186,9 +189,9 @@ async def gestisci_testo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         chat_id = update.effective_chat.id
 
-        for giorno in giorni:
-            job_id = f"{user_id}_{giorno}_{ore}_{minuti}_{tipo}"
-            if tipo == "text":
+        if tipo == "text":
+            for giorno in giorni:
+                job_id = f"{user_id}_{giorno}_{ore}_{minuti}_{tipo}"
                 scheduler.add_job(
                     manda_messaggio,
                     CronTrigger(day_of_week=giorno, hour=ore, minute=minuti),
@@ -196,30 +199,30 @@ async def gestisci_testo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     id=job_id,
                     replace_existing=True
                 )
-            else:
-                context.user_data[user_id] = {
-                    "chat_id": chat_id,
-                    "caption": messaggio,
-                    "giorni": giorni,
-                    "ore": ore,
-                    "minuti": minuti
-                }
-                await update.message.reply_text("📸 Mandami la foto per questo reminder")
-                del user_state[user_id]
-                return
 
-        user_data.setdefault(user_id, {"reminders": []})["reminders"].append({
-            "id": job_id,
-            "text": messaggio,
-            "time": f"{ore:02d}:{minuti:02d}",
-            "type": tipo
-        })
+            user_data.setdefault(user_id, {"reminders": []})["reminders"].append({
+                "id": job_id,
+                "text": messaggio,
+                "time": f"{ore:02d}:{minuti:02d}",
+                "type": tipo
+            })
 
-        await update.message.reply_text(
-            f"✅ Reminder salvato!\n\"{messaggio}\"\nAlle {ore:02d}:{minuti:02d}",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu", callback_data="menu")]])
-        )
-        del user_state[user_id]
+            await update.message.reply_text(
+                f"✅ Reminder salvato!\n\"{messaggio}\"\nAlle {ore:02d}:{minuti:02d}",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu", callback_data="menu")]])
+            )
+            del user_state[user_id]
+
+        else:
+            context.user_data[user_id] = {
+                "chat_id": chat_id,
+                "caption": messaggio,
+                "giorni": giorni,
+                "ore": ore,
+                "minuti": minuti
+            }
+            await update.message.reply_text("📸 Mandami la foto per questo reminder")
+            del user_state[user_id]
 
 async def gestisci_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -240,40 +243,50 @@ async def gestisci_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             replace_existing=True
         )
 
-   user_data.setdefault(user_id, {"reminders": []})["reminders"].append({
+    user_data.setdefault(user_id, {"reminders": []})["reminders"].append({
         "id": job_id,
         "text": caption or "Foto",
         "time": f"{dati['ore']:02d}:{dati['minuti']:02d}",
         "type": "photo"
     })
 
-   await update.message.reply_text(
-        f"✅ Reminder con foto salvato!\n"
-        f"\"{caption or 'Foto'}\"\n"
-        f"Alle {dati['ore']:02d}:{dati['minuti']:02d} 📸",
+    await update.message.reply_text(
+        f"✅ Reminder con foto salvato!\n\"{caption or 'Foto'}\"\nAlle {dati['ore']:02d}:{dati['minuti']:02d} 📸",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu", callback_data="menu")]])
     )
     del context.user_data[user_id]
 
-flask_app = Flask(__name__)
-@flask_app.route("/")
+@flask_app.route('/webhook', methods=['POST'])
+async def webhook():
+    try:
+        update = Update.de_json(request.get_json(), application.bot)
+        await application.process_update(update)
+        return 'OK'
+    except Exception as e:
+        logging.error(f"Errore webhook: {e}")
+        return 'Error', 500
+
+@flask_app.route('/')
 def home():
-    return "Bot Telegram attivo! (Port: {})".format(os.environ.get('PORT', 10000))
+    return "Bot Telegram attivo!"
 
-def run_flask():
-    port = int(os.environ.get('PORT', 10000))
-    flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.Regex(r"(?i)^(ciao|menu|hey|avvia)"), mostra_menu))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, gestisci_testo))
-app.add_handler(MessageHandler(filters.PHOTO, gestisci_foto))
-app.add_handler(CallbackQueryHandler(button_handler))
 
 if __name__ == "__main__":
-    threading.Thread(target=run_flask, daemon=True).start()
-    print("Bot Telegram + Flask avviati! In ascolto...")
-    app.run_polling()
+ 
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.Regex(r"(?i)^(ciao|menu|hey|avvia)"), mostra_menu))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, gestisci_testo))
+    application.add_handler(MessageHandler(filters.PHOTO, gestisci_foto))
+    application.add_handler(CallbackQueryHandler(button_handler))
+
+    webhook_url = os.environ.get('WEBHOOK_URL', 'https://your-bot.onrender.com/webhook')
+    application.bot.set_webhook(webhook_url)
+
+    port = int(os.environ.get('PORT', 5000))
+    flask_app.run(host='0.0.0.0', port=port, debug=False)
+
+    print("Bot Telegram con webhook avviato!")
+
 
 
 
