@@ -186,7 +186,6 @@ async def gestisci_testo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ore = stato["temp"]["ora"]
         minuti = stato["temp"]["minuti"]
         tipo = stato["tipo"]
-
         chat_id = update.effective_chat.id
 
         if tipo == "text":
@@ -233,6 +232,7 @@ async def gestisci_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_id = update.message.photo[-1].file_id
     caption = update.message.caption.strip() if update.message.caption else dati["caption"]
 
+  
     for giorno in dati["giorni"]:
         job_id = f"{user_id}_{giorno}_{dati['ore']}_{dati['minuti']}_photo"
         scheduler.add_job(
@@ -243,15 +243,26 @@ async def gestisci_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             replace_existing=True
         )
 
-    user_data.setdefault(user_id, {"reminders": []})["reminders"].append({
-        "id": job_id,
-        "text": caption or "Foto",
-        "time": f"{dati['ore']:02d}:{dati['minuti']:02d}",
-        "type": "photo"
-    })
+        
+        user_data.setdefault(user_id, {"reminders": []})["reminders"].append({
+            "id": job_id,
+            "text": caption or "Foto",
+            "time": f"{dati['ore']:02d}:{dati['minuti']:02d}",
+            "type": "photo"
+        })
+
+
+    giorni_testo = ", ".join([
+        "ogni giorno" if g == "*" else 
+        ["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"][["mon","tue","wed","thu","fri","sat","sun"].index(g)]
+        for g in dati["giorni"]
+    ])
 
     await update.message.reply_text(
-        f"✅ Reminder con foto salvato!\n\"{caption or 'Foto'}\"\nAlle {dati['ore']:02d}:{dati['minuti']:02d} 📸",
+        f"✅ Reminder con foto salvato!\n"
+        f"\"{caption or 'Foto'}\"\n"
+        f"Giorni: {giorni_testo}\n"
+        f"Alle {dati['ore']:02d}:{dati['minuti']:02d} 📸",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Menu", callback_data="menu")]])
     )
     del context.user_data[user_id]
@@ -286,6 +297,7 @@ if __name__ == "__main__":
     flask_app.run(host='0.0.0.0', port=port, debug=False)
 
     print("Bot Telegram con webhook avviato!")
+
 
 
 
