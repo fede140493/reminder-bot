@@ -232,7 +232,7 @@ async def gestisci_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_id = update.message.photo[-1].file_id
     caption = update.message.caption.strip() if update.message.caption else dati["caption"]
 
-  
+    
     for giorno in dati["giorni"]:
         job_id = f"{user_id}_{giorno}_{dati['ore']}_{dati['minuti']}_photo"
         scheduler.add_job(
@@ -297,8 +297,3 @@ if __name__ == "__main__":
     flask_app.run(host='0.0.0.0', port=port, debug=False)
 
     print("Bot Telegram con webhook avviato!")
-
-
-
-
-
