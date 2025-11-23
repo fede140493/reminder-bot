@@ -1,6 +1,6 @@
 python-telegram-bot==22.5
 APScheduler==3.10.4
-python-dotenv
-pytz
-flask
-gunicorn  # ← AGGIUNTO per server web su Render
+python-dotenv==1.0.1
+pytz==2024.1
+Flask==3.0.3
+gunicorn==22.0.0  
