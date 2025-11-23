@@ -4,7 +4,7 @@ services:
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
-    envVars:
+    startCommand: python main.py   
       BOT_TOKEN:
         fromSecret: BOT_TOKEN
+      WEBHOOK_URL: https://reminder-bot-a55c.onrender.com/webhook
